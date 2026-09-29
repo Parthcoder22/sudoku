@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sudoku Master | Algorithm & Visual Solver</title>
+  <meta name="description" content="A modern, high-performance Sudoku game featuring real-time backtracking visualization, intelligent hints, state persistence, and multiple difficulty levels.">
+  
+  <!-- Google Fonts: Inter & Outfit -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            display: ['Outfit', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              100: '#e0e7ff',
+              200: '#c7d2fe',
+              300: '#a5b4fc',
+              400: '#818cf8',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+              800: '#3730a3',
+              900: '#312e81',
+              950: '#1e1b4b',
+            },
+            surface: {
+              50: '#f8fafc',
+              100: '#f1f5f9',
+              800: '#1e293b',
+              850: '#172033',
+              900: '#0f172a',
+              950: '#090d16',
+            }
+          },
+          animation: {
+            'pulse-fast': 'pulse 0.8s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+            'bounce-subtle': 'bounceSubtle 0.3s ease-out',
+            'shake': 'shake 0.35s ease-in-out',
+            'pop': 'pop 0.18s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+            'glow': 'glow 1.5s ease-in-out infinite alternate',
+          },
+          keyframes: {
+            bounceSubtle: {
+              '0%, 100%': { transform: 'scale(1)' },
+              '50%': { transform: 'scale(1.08)' }
+            },
+            pop: {
+              '0%': { transform: 'scale(0.85)', opacity: '0.7' },
+              '100%': { transform: 'scale(1)', opacity: '1' }
+            },
+            shake: {
+              '0%, 100%': { transform: 'translateX(0)' },
+              '20%, 60%': { transform: 'translateX(-4px)' },
+              '40%, 80%': { transform: 'translateX(4px)' }
+            },
+            glow: {
+              '0%': { boxShadow: '0 0 5px rgba(99, 102, 241, 0.3)' },
+              '100%': { boxShadow: '0 0 20px rgba(99, 102, 241, 0.8)' }
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Canvas Confetti for Victory Celebration -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
+
+  <style>
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #475569;
+    }
+
+    /* Grid Sub-box separator borders */
+    .sudoku-cell {
+      transition: background-color 0.12s ease, transform 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    /* 3x3 block borders */
+    .border-r-thick {
+      border-right-width: 3px !important;
+      border-right-color: #475569 !important;
+    }
+    .border-b-thick {
+      border-bottom-width: 3px !important;
+      border-bottom-color: #475569 !important;
+    }
+
+    /* Cell states */
+    .cell-selected {
+      background-color: rgba(99, 102, 241, 0.32) !important;
+      outline: 2px solid #818cf8 !important;
+      outline-offset: -2px;
+      z-index: 10;
+    }
+
+    .cell-highlighted {
+      background-color: rgba(99, 102, 241, 0.12) !important;
+    }
+
+    .cell-matching-number {
+      background-color: rgba(99, 102, 241, 0.28) !important;
+      font-weight: 700;
+    }
+
+    .cell-conflict {
+      background-color: rgba(239, 68, 68, 0.26) !important;
+      color: #f87171 !important;
+    }
+
+    .cell-given {
+      color: #f8fafc !important;
+      font-weight: 700 !important;
+    }
+
+    .cell-user-entered {
+      color: #818cf8 !important;
+      font-weight: 600;
+    }
+
+    .cell-hinted {
+      background-color: rgba(16, 185, 129, 0.25) !important;
+      color: #34d399 !important;
+      animation: pop 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    /* Backtracking Visualizer States */
+    .cell-evaluating {
+      background-color: rgba(245, 158, 11, 0.35) !important;
+      outline: 2px solid #f59e0b !important;
+      outline-offset: -2px;
+      color: #fbbf24 !important;
+      transform: scale(1.04);
+      z-index: 20;
+    }
+
+    .cell-placed-valid {
+      background-color: rgba(16, 185, 129, 0.25) !important;
+      color: #34d399 !important;
+    }
+
+    .cell-backtracking {
+      background-color: rgba(239, 68, 68, 0.4) !important;
+      outline: 2px solid #ef4444 !important;
+      outline-offset: -2px;
+      color: #fca5a5 !important;
+      transform: scale(0.95);
+      z-index: 20;
+    }
+
+    .cell-final-solved {
+      background-color: rgba(99, 102, 241, 0.2) !important;
+      color: #a5b4fc !important;
+    }
+
+    /* Glass Card styling */
+    .glass-panel {
+      background: rgba(23, 32, 51, 0.7);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .glass-button {
+      background: rgba(30, 41, 59, 0.8);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      transition: all 0.15s ease-in-out;
+    }
+    .glass-button:hover:not(:disabled) {
+      background: rgba(51, 65, 85, 0.9);
+      border-color: rgba(99, 102, 241, 0.4);
+      transform: translateY(-1px);
+    }
+    .glass-button:active:not(:disabled) {
+      transform: translateY(0);
+    }
+
+    /* Pencil notes mini-grid */
+    .notes-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(3, 1fr);
+      width: 100%;
+      height: 100%;
+      padding: 1px;
+      font-size: 8px;
+      line-height: 1;
+      pointer-events: none;
+    }
+    @media (min-width: 640px) {
+      .notes-grid {
+        font-size: 10px;
+      }
+    }
+    .note-item {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #94a3b8;
+    }
+  </style>
+</head>
+<body class="bg-surface-950 text-slate-100 min-h-screen font-sans selection:bg-brand-600 selection:text-white antialiased flex flex-col justify-between">
+
+  <!-- Glow backdrop decoration -->
+  <div class="fixed top-0 left-1/2 -translate-x-1/2 w-[800px] h-[350px] bg-brand-600/10 rounded-full blur-[140px] pointer-events-none -z-10"></div>
+  <div class="fixed bottom-0 right-10 w-[500px] h-[300px] bg-emerald-600/5 rounded-full blur-[120px] pointer-events-none -z-10"></div>
+
+  <!-- Header -->
+  <header class="border-b border-slate-800/80 bg-surface-900/60 backdrop-blur-md sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-400 flex items-center justify-center shadow-lg shadow-brand-500/25">
+          <svg class="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+          </svg>
+        </div>
+        <div>
+          <h1 class="text-lg sm:text-xl font-display font-bold tracking-tight text-white flex items-center gap-2">
+            Sudoku Master
+            <span class="text-[10px] font-mono font-medium px-2 py-0.5 rounded-full bg-brand-500/20 text-brand-300 border border-brand-500/30">PRO</span>
+          </h1>
+          <p class="text-xs text-slate-400 hidden sm:block">Real-time Backtracking Algorithm & Interactive Solver</p>
+        </div>
+      </div>
+
+      <!-- Header Quick Actions -->
+      <div class="flex items-center gap-2 sm:gap-3">
+        <!-- Sound Toggle -->
+        <button id="btnSoundToggle" aria-label="Toggle sound effects" class="p-2.5 rounded-lg glass-button text-slate-300 hover:text-white transition">
+          <svg id="iconSoundOn" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+          </svg>
+          <svg id="iconSoundOff" class="w-5 h-5 hidden text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15zM17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+          </svg>
+        </button>
+
+        <!-- Algorithm Docs / Info -->
+        <button id="btnInfoModal" aria-label="Algorithm Information" class="p-2.5 rounded-lg glass-button text-slate-300 hover:text-white transition" title="Algorithm Details">
+          <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </button>
+
+        <!-- New Game Quick Button -->
+        <button id="btnOpenNewGameModal" class="px-3.5 py-2 rounded-lg bg-brand-600 hover:bg-brand-500 text-white font-medium text-xs sm:text-sm shadow-md shadow-brand-600/30 flex items-center gap-1.5 transition active:scale-95">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+          </svg>
+          <span>New Game</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Saved Game Notification Banner (Conditional) -->
+  <div id="continueBanner" class="hidden max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4 w-full">
+    <div class="glass-panel border-brand-500/40 rounded-xl p-3.5 sm:p-4 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-lg bg-gradient-to-r from-brand-950/60 to-surface-850/80">
+      <div class="flex items-center gap-3">
+        <div class="p-2 rounded-lg bg-brand-500/20 text-brand-400">
+          <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <div>
+          <p class="text-sm font-semibold text-slate-100" id="continueBannerText">Unfinished game found in local storage</p>
+          <p class="text-xs text-slate-400" id="continueBannerDetails">Difficulty: Medium | Time: 02:45</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
+        <button id="btnDismissSaved" class="px-3 py-1.5 text-xs text-slate-400 hover:text-slate-200 transition">
+          Discard
+        </button>
+        <button id="btnContinueSaved" class="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs shadow-md shadow-emerald-600/30 transition">
+          Continue Game
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Content Layout -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 w-full flex-grow flex flex-col justify-center">
+    
+    <!-- Top Game Stats Bar -->
+    <div class="glass-panel rounded-2xl p-4 mb-4 grid grid-cols-2 sm:grid-cols-4 gap-3 text-center sm:text-left shadow-lg">
+      <!-- Difficulty Indicator -->
+      <div class="flex items-center gap-3 bg-surface-900/60 px-3 py-2 rounded-xl border border-slate-800">
+        <div class="w-9 h-9 rounded-lg bg-brand-500/10 flex items-center justify-center text-brand-400 shrink-0">
+          <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+        </div>
+        <div class="overflow-hidden text-left">
+          <span class="text-[11px] uppercase tracking-wider text-slate-400 font-medium block">Difficulty</span>
+          <span id="statDifficulty" class="font-display font-bold text-sm text-slate-100 capitalize">Medium</span>
+        </div>
+      </div>
+
+      <!-- Timer with Pause / Play -->
+      <div class="flex items-center justify-between bg-surface-900/60 px-3 py-2 rounded-xl border border-slate-800">
+        <div class="flex items-center gap-3 text-left">
+          <div class="w-9 h-9 rounded-lg bg-indigo-500/10 flex items-center justify-center text-indigo-400 shrink-0">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <div>
+            <span class="text-[11px] uppercase tracking-wider text-slate-400 font-medium block">Timer</span>
+            <span id="statTimer" class="font-mono font-semibold text-sm sm:text-base text-slate-100">00:00</span>
+          </div>
+        </div>
+        <button id="btnPauseGame" aria-label="Pause/Resume Timer" class="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition" title="Pause / Resume">
+          <svg id="iconPause" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <svg id="iconResume" class="w-4 h-4 hidden text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </button>
+      </div>
+
+      <!-- Mistakes Tracker -->
+      <div class="flex items-center gap-3 bg-surface-900/60 px-3 py-2 rounded-xl border border-slate-800">
+        <div class="w-9 h-9 rounded-lg bg-rose-500/10 flex items-center justify-center text-rose-400 shrink-0">
+          <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+        </div>
+        <div class="text-left">
+          <span class="text-[11px] uppercase tracking-wider text-slate-400 font-medium block">Mistakes</span>
+          <span id="statMistakes" class="font-display font-bold text-sm text-slate-100">0</span>
+        </div>
+      </div>
+
+      <!-- Hints Counter -->
+      <div class="flex items-center justify-between bg-surface-900/60 px-3 py-2 rounded-xl border border-slate-800">
+        <div class="flex items-center gap-3 text-left">
+          <div class="w-9 h-9 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-400 shrink-0">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+            </svg>
+          </div>
+          <div>
+            <span class="text-[11px] uppercase tracking-wider text-slate-400 font-medium block">Hints</span>
+            <span id="statHints" class="font-display font-bold text-sm text-slate-100">3 / 3</span>
+          </div>
+        </div>
+        <button id="btnQuickHint" class="px-2.5 py-1 text-xs font-semibold rounded-md bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 transition active:scale-95">
+          Hint
+        </button>
+      </div>
+    </div>
+
+    <!-- Main Grid and Control Panels -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+
+      <!-- LEFT: 9x9 Sudoku Board Container (lg:col-span-7) -->
+      <div class="lg:col-span-7 flex flex-col items-center">
+        <div class="relative w-full max-w-[500px] aspect-square p-2.5 sm:p-3.5 rounded-2xl glass-panel shadow-2xl border border-slate-700/60">
+          
+          <!-- Sudoku 9x9 Grid -->
+          <div id="sudokuGrid" class="grid grid-cols-9 grid-rows-9 w-full h-full rounded-xl overflow-hidden border-2 border-slate-600 bg-surface-900 shadow-inner" tabindex="0" aria-label="Sudoku 9 by 9 Grid">
+            <!-- 81 Cells injected dynamically via JavaScript -->
+          </div>
+
+          <!-- Paused Overlay -->
+          <div id="pausedOverlay" class="hidden absolute inset-0 bg-surface-950/85 backdrop-blur-sm rounded-2xl flex flex-col items-center justify-center gap-3 z-30">
+            <div class="p-4 rounded-full bg-brand-600/20 text-brand-400 mb-1">
+              <svg class="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h3 class="text-xl font-display font-bold text-white">Game Paused</h3>
+            <p class="text-xs text-slate-400">Board is hidden to keep the timer fair</p>
+            <button id="btnResumeOverlay" class="mt-2 px-6 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-medium text-sm shadow-lg shadow-brand-500/30 transition transform hover:-translate-y-0.5 active:translate-y-0">
+              Resume Puzzle
+            </button>
+          </div>
+
+        </div>
+
+        <!-- Keyboard navigation helper tooltip -->
+        <div class="mt-3 text-center text-xs text-slate-400 hidden sm:flex items-center gap-2">
+          <span class="inline-block px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 font-mono text-[10px] text-slate-300">Arrows</span>
+          <span>Move</span>
+          <span class="text-slate-600">•</span>
+          <span class="inline-block px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 font-mono text-[10px] text-slate-300">1-9</span>
+          <span>Fill</span>
+          <span class="text-slate-600">•</span>
+          <span class="inline-block px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 font-mono text-[10px] text-slate-300">Backspace</span>
+          <span>Erase</span>
+          <span class="text-slate-600">•</span>
+          <span class="inline-block px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 font-mono text-[10px] text-slate-300">N</span>
+          <span>Notes</span>
+        </div>
+
+        <!-- Mobile / Touch Number Pad (1-9, Erase, Notes) -->
+        <div class="w-full max-w-[500px] mt-4 glass-panel rounded-2xl p-3 shadow-lg">
+          <div class="grid grid-cols-9 gap-1.5 sm:gap-2 mb-2">
+            <button class="numpad-btn h-11 sm:h-12 rounded-xl bg-surface-900 border border-slate-700/80 font-display font-bold text-base sm:text-lg text-slate-100 hover:bg-brand-600/30 hover:border-brand-500 transition active:scale-95" data-num="1">1</button>
+            <button class="numpad-btn h-11 sm:h-12 rounded-xl bg-surface-900 border border-slate-700/80 font-display font-bold text-base sm:text-lg text-slate-100 hover:bg-brand-600/30 hover:border-brand-500 transition active:scale-95" data-num="2">2</button>
+            <button class="numpad-btn h-11 sm:h-12 rounded-xl bg-surface-900 border border-slate-700/80 font-display font-bold text-base sm:text-lg text-slate-100 hover:bg-brand-600/30 hover:border-brand-500 transition active:scale-95" data-num="3">3</button>
+            <button class="numpad-btn h-11 sm:h-12 rounded-xl bg-surface-900 border border-slate-700/80 font-display font-bold text-base sm:text-lg text-slate-100 hover:bg-brand-600/30 hover:border-brand-500 transition active:scale-95" data-num="4">4</button>
+            <button class="numpad-btn h-11 sm:h-12 rounded-xl bg-surface-900 border border-slate-700/80 font-display font-bold text-base sm:text-lg text-slate-100 hover:bg-brand-600/30 hover:border-brand-500 transition active:scale-95" data-num="5">5</button>
+            <button class="numpad-btn h-11 sm:h-12 rounded-xl bg-surface-900 border border-slate-700/80 font-display font-bold text-base sm:text-lg text-slate-100 hover:bg-brand-600/30 hover:border-brand-500 transition active:scale-95" data-num="6">6</button>
+            <button class="numpad-btn h-11 sm:h-12 rounded-xl bg-surface-900 border border-slate-700/80 font-display font-bold text-base sm:text-lg text-slate-100 hover:bg-brand-600/30 hover:border-brand-500 transition active:scale-95" data-num="7">7</button>
+            <button class="numpad-btn h-11 sm:h-12 rounded-xl bg-surface-900 border border-slate-700/80 font-display font-bold text-base sm:text-lg text-slate-100 hover:bg-brand-600/30 hover:border-brand-500 transition active:scale-95" data-num="8">8</button>
+            <button class="numpad-btn h-11 sm:h-12 rounded-xl bg-surface-900 border border-slate-700/80 font-display font-bold text-base sm:text-lg text-slate-100 hover:bg-brand-600/30 hover:border-brand-500 transition active:scale-95" data-num="9">9</button>
+          </div>
+
+          <!-- Utility row: Erase, Notes toggle, Hint -->
+          <div class="grid grid-cols-3 gap-2 text-xs font-semibold">
+            <button id="btnErase" class="py-2.5 px-3 rounded-xl glass-button text-slate-300 hover:text-white flex items-center justify-center gap-1.5 transition active:scale-95">
+              <svg class="w-4 h-4 text-rose-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+              <span>Erase</span>
+            </button>
+
+            <button id="btnToggleNotes" class="py-2.5 px-3 rounded-xl glass-button text-slate-300 hover:text-white flex items-center justify-center gap-1.5 transition active:scale-95">
+              <svg class="w-4 h-4 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+              </svg>
+              <span>Notes: <span id="notesState" class="text-slate-400 uppercase text-[10px]">OFF</span></span>
+            </button>
+
+            <button id="btnApplyHint" class="py-2.5 px-3 rounded-xl glass-button text-amber-300 hover:text-amber-200 flex items-center justify-center gap-1.5 transition active:scale-95">
+              <svg class="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+              </svg>
+              <span>Hint</span>
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- RIGHT: Controls & Visualizer Dashboard (lg:col-span-5) -->
+      <div class="lg:col-span-5 flex flex-col gap-4">
+
+        <!-- ⭐ Visual Backtracking Solver Section (Main technical highlight) -->
+        <div class="glass-panel rounded-2xl p-5 border border-brand-500/30 relative overflow-hidden shadow-xl">
+          <div class="absolute -right-8 -top-8 w-32 h-32 bg-brand-500/10 rounded-full blur-2xl pointer-events-none"></div>
+
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-2.5">
+              <div class="w-7 h-7 rounded-lg bg-gradient-to-tr from-amber-500 to-rose-500 flex items-center justify-center text-white text-xs font-bold shadow-md shadow-amber-500/20">
+                ⚡
+              </div>
+              <h2 class="font-display font-bold text-base sm:text-lg text-white">Visual Backtracking Solver</h2>
+            </div>
+            <span class="text-[10px] font-mono uppercase bg-slate-800 text-slate-300 border border-slate-700 px-2 py-0.5 rounded-full">
+              Algorithm Mode
+            </span>
+          </div>
+
+          <p class="text-xs text-slate-300 mb-4 leading-relaxed">
+            Watch the real depth-first search (DFS) with backtracking in action. See candidate trials, conflicts, and decision tree rollbacks.
+          </p>
+
+          <!-- Main Visualize Trigger Button -->
+          <div id="solverInitialControls" class="flex flex-col gap-2.5">
+            <button id="btnVisualizeSolver" class="w-full py-3 rounded-xl bg-gradient-to-r from-brand-600 via-indigo-600 to-brand-500 hover:from-brand-500 hover:to-indigo-500 text-white font-display font-bold text-sm tracking-wide shadow-lg shadow-brand-500/30 flex items-center justify-center gap-2 transition transform hover:-translate-y-0.5 active:translate-y-0">
+              <svg class="w-5 h-5 text-indigo-200 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span>Visualize Solver</span>
+            </button>
+          </div>
+
+          <!-- Active Visualization Control & Telemetry Panel (Hidden until running) -->
+          <div id="visualizerActiveControls" class="hidden flex-col gap-3 mt-1">
+            <!-- Telemetry Stats Grid -->
+            <div class="grid grid-cols-3 gap-2 bg-surface-900/90 p-3 rounded-xl border border-slate-800 font-mono text-center">
+              <div>
+                <span class="text-[10px] text-slate-400 uppercase block">Steps</span>
+                <span id="visSteps" class="text-sm font-bold text-brand-300">0</span>
+              </div>
+              <div>
+                <span class="text-[10px] text-slate-400 uppercase block">Backtracks</span>
+                <span id="visBacktracks" class="text-sm font-bold text-rose-400">0</span>
+              </div>
+              <div>
+                <span class="text-[10px] text-slate-400 uppercase block">Depth</span>
+                <span id="visDepth" class="text-sm font-bold text-amber-300">0 / 81</span>
+              </div>
+            </div>
+
+            <!-- Algorithm Status Indicator -->
+            <div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-900/60 border border-slate-800 text-xs">
+              <span id="visStatusDot" class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping"></span>
+              <span id="visStatusText" class="text-slate-300 truncate font-mono">Initializing solver...</span>
+            </div>
+
+            <!-- Speed Control -->
+            <div class="bg-surface-900/60 p-2.5 rounded-xl border border-slate-800">
+              <div class="flex items-center justify-between text-xs text-slate-300 mb-2">
+                <span class="font-medium">Solver Speed:</span>
+                <span id="visSpeedLabel" class="font-mono text-brand-400 text-xs font-semibold">Normal (40ms)</span>
+              </div>
+              <div class="grid grid-cols-4 gap-1.5 text-xs font-medium">
+                <button class="vis-speed-btn py-1.5 rounded-lg bg-surface-800 text-slate-300 hover:text-white hover:bg-slate-700 transition" data-speed="slow">Slow</button>
+                <button class="vis-speed-btn py-1.5 rounded-lg bg-brand-600 text-white font-bold transition" data-speed="normal">Normal</button>
+                <button class="vis-speed-btn py-1.5 rounded-lg bg-surface-800 text-slate-300 hover:text-white hover:bg-slate-700 transition" data-speed="fast">Fast</button>
+                <button class="vis-speed-btn py-1.5 rounded-lg bg-surface-800 text-slate-300 hover:text-white hover:bg-slate-700 transition" data-speed="turbo">Turbo</button>
+              </div>
+            </div>
+
+            <!-- Live Action Buttons: Pause/Resume, Stop -->
+            <div class="grid grid-cols-2 gap-2">
+              <button id="btnVisPauseResume" class="py-2.5 px-3 rounded-xl glass-button text-amber-300 hover:text-amber-200 font-medium text-xs flex items-center justify-center gap-1.5 transition">
+                <svg id="iconVisPause" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span id="visPauseText">Pause</span>
+              </button>
+              <button id="btnVisStop" class="py-2.5 px-3 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 font-medium text-xs flex items-center justify-center gap-1.5 transition">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+                <span>Stop Visualizer</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Color Legend for Visualizer -->
+          <div class="mt-4 pt-3 border-t border-slate-800 grid grid-cols-3 gap-2 text-[11px] text-slate-400">
+            <div class="flex items-center gap-1.5">
+              <span class="w-3 h-3 rounded bg-amber-500/40 border border-amber-500"></span>
+              <span>Testing</span>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <span class="w-3 h-3 rounded bg-emerald-500/40 border border-emerald-500"></span>
+              <span>Valid</span>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <span class="w-3 h-3 rounded bg-rose-500/40 border border-rose-500"></span>
+              <span>Backtrack</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Gameplay Controls & Actions Card -->
+        <div class="glass-panel rounded-2xl p-5 shadow-xl">
+          <h3 class="font-display font-semibold text-sm text-slate-200 mb-3 uppercase tracking-wider">Game Actions</h3>
+
+          <div class="grid grid-cols-2 gap-2.5">
+            <!-- Check Solution -->
+            <button id="btnCheckSolution" class="py-2.5 px-3 rounded-xl glass-button text-slate-200 hover:text-white font-medium text-xs sm:text-sm flex items-center justify-center gap-2">
+              <svg class="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span>Check Solution</span>
+            </button>
+
+            <!-- Restart Current Puzzle -->
+            <button id="btnRestartCurrent" class="py-2.5 px-3 rounded-xl glass-button text-slate-200 hover:text-white font-medium text-xs sm:text-sm flex items-center justify-center gap-2">
+              <svg class="w-4 h-4 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              <span>Restart Puzzle</span>
+            </button>
+
+            <!-- Reset Board (Clear all user entries) -->
+            <button id="btnResetBoard" class="py-2.5 px-3 rounded-xl glass-button text-slate-200 hover:text-white font-medium text-xs sm:text-sm flex items-center justify-center gap-2">
+              <svg class="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+              <span>Clear User Inputs</span>
+            </button>
+
+            <!-- Instant Solve (Standard solver) -->
+            <button id="btnInstantSolve" class="py-2.5 px-3 rounded-xl glass-button text-slate-200 hover:text-white font-medium text-xs sm:text-sm flex items-center justify-center gap-2">
+              <svg class="w-4 h-4 text-indigo-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              <span>Instant Solve</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Quick Difficulty Picker -->
+        <div class="glass-panel rounded-2xl p-4 shadow-xl flex items-center justify-between">
+          <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Select Difficulty</span>
+          <div class="flex items-center gap-1.5 bg-surface-900/80 p-1 rounded-xl border border-slate-800">
+            <button class="diff-btn px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white transition" data-difficulty="easy">Easy</button>
+            <button class="diff-btn px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-brand-600 transition" data-difficulty="medium">Medium</button>
+            <button class="diff-btn px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white transition" data-difficulty="hard">Hard</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="border-t border-slate-900 bg-surface-950 py-4 mt-6">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500">
+      <p>Sudoku Master & Visual Backtracker • Portfolio Web Project</p>
+      <p class="font-mono text-[11px]">Vanilla JS • Tailwind CSS • HTML5 • LocalStorage</p>
+    </div>
+  </footer>
+
+  <!-- ==================== MODALS ==================== -->
+
+  <!-- 1. Completion / Victory Modal -->
+  <div id="completionModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-surface-950/80 backdrop-blur-md">
+    <div class="glass-panel border-brand-500/40 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl relative text-center animate-pop bg-surface-900/90">
+      
+      <!-- Trophy badge -->
+      <div class="w-20 h-20 rounded-full bg-gradient-to-tr from-amber-500 to-brand-500 mx-auto flex items-center justify-center text-4xl shadow-lg shadow-amber-500/30 mb-4 animate-bounce-subtle">
+        🏆
+      </div>
+
+      <h2 class="font-display font-extrabold text-2xl sm:text-3xl text-white tracking-tight mb-1">
+        Sudoku Solved!
+      </h2>
+      <p class="text-sm text-slate-400 mb-6">Brilliant job! You completed the puzzle successfully.</p>
+
+      <!-- Stats Summary -->
+      <div class="grid grid-cols-2 gap-3 mb-6 font-mono text-left">
+        <div class="bg-surface-950/60 p-3 rounded-xl border border-slate-800">
+          <span class="text-[10px] text-slate-400 uppercase block">Time Taken</span>
+          <span id="winTime" class="text-lg font-bold text-white">04:12</span>
+        </div>
+        <div class="bg-surface-950/60 p-3 rounded-xl border border-slate-800">
+          <span class="text-[10px] text-slate-400 uppercase block">Difficulty</span>
+          <span id="winDifficulty" class="text-lg font-bold text-brand-300 capitalize">Medium</span>
+        </div>
+        <div class="bg-surface-950/60 p-3 rounded-xl border border-slate-800">
+          <span class="text-[10px] text-slate-400 uppercase block">Mistakes</span>
+          <span id="winMistakes" class="text-lg font-bold text-rose-400">1</span>
+        </div>
+        <div class="bg-surface-950/60 p-3 rounded-xl border border-slate-800">
+          <span class="text-[10px] text-slate-400 uppercase block">Hints Used</span>
+          <span id="winHints" class="text-lg font-bold text-amber-300">0 / 3</span>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="flex flex-col gap-2.5">
+        <button id="btnWinPlayAgain" class="w-full py-3 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-display font-bold text-sm tracking-wide shadow-lg shadow-brand-500/30 transition">
+          Play Again
+        </button>
+        <button id="btnWinNewPuzzle" class="w-full py-2.5 rounded-xl glass-button text-slate-300 hover:text-white text-xs font-semibold transition">
+          Choose Different Difficulty
+        </button>
+        <button id="btnWinClose" class="text-xs text-slate-500 hover:text-slate-400 pt-1 transition">
+          Review Finished Board
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. New Game Difficulty Picker Modal -->
+  <div id="newGameModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-surface-950/80 backdrop-blur-md">
+    <div class="glass-panel border-slate-700 rounded-3xl p-6 sm:p-7 max-w-md w-full shadow-2xl relative bg-surface-900/95 animate-pop">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-display font-bold text-xl text-white">Start New Game</h3>
+        <button id="btnCloseNewGameModal" aria-label="Close modal" class="p-1 rounded-lg text-slate-400 hover:text-white">
+          <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      
+      <p class="text-xs text-slate-400 mb-5">Choose a challenge level for the generated 9×9 puzzle:</p>
+
+      <div class="space-y-3 mb-6">
+        <button class="modal-start-game-btn w-full p-4 rounded-2xl glass-button hover:border-emerald-500 text-left flex items-center justify-between group transition" data-difficulty="easy">
+          <div>
+            <div class="font-display font-bold text-slate-100 group-hover:text-emerald-400 transition">Easy</div>
+            <div class="text-xs text-slate-400">~40 clues. Ideal for casual solving and warm-ups.</div>
+          </div>
+          <span class="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center font-bold text-xs">●</span>
+        </button>
+
+        <button class="modal-start-game-btn w-full p-4 rounded-2xl glass-button hover:border-brand-500 text-left flex items-center justify-between group transition" data-difficulty="medium">
+          <div>
+            <div class="font-display font-bold text-slate-100 group-hover:text-brand-400 transition">Medium</div>
+            <div class="text-xs text-slate-400">~32 clues. Balanced logic requiring scanning.</div>
+          </div>
+          <span class="w-8 h-8 rounded-xl bg-brand-500/10 text-brand-400 flex items-center justify-center font-bold text-xs">●●</span>
+        </button>
+
+        <button class="modal-start-game-btn w-full p-4 rounded-2xl glass-button hover:border-rose-500 text-left flex items-center justify-between group transition" data-difficulty="hard">
+          <div>
+            <div class="font-display font-bold text-slate-100 group-hover:text-rose-400 transition">Hard</div>
+            <div class="text-xs text-slate-400">~26 clues. Advanced logic, fewer anchors.</div>
+          </div>
+          <span class="w-8 h-8 rounded-xl bg-rose-500/10 text-rose-400 flex items-center justify-center font-bold text-xs">●●●</span>
+        </button>
+      </div>
+
+      <div class="text-center">
+        <button id="btnCancelNewGameModal" class="text-xs text-slate-500 hover:text-slate-300">
+          Cancel and Return
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. Algorithm Explanation & Rules Modal -->
+  <div id="infoModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-surface-950/80 backdrop-blur-md">
+    <div class="glass-panel border-slate-700 rounded-3xl p-6 sm:p-7 max-w-lg w-full shadow-2xl relative bg-surface-900/95 max-h-[85vh] overflow-y-auto animate-pop">
+      <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-lg bg-brand-600/20 text-brand-400 flex items-center justify-center font-bold">ℹ️</div>
+          <h3 class="font-display font-bold text-lg text-white">Sudoku & Backtracking Algorithm</h3>
+        </div>
+        <button id="btnCloseInfoModal" aria-label="Close modal" class="p-1 rounded-lg text-slate-400 hover:text-white">
+          <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      <div class="space-y-4 text-xs text-slate-300 leading-relaxed">
+        <div>
+          <h4 class="font-semibold text-slate-100 text-sm mb-1 text-brand-300">How the Backtracking Solver Works</h4>
+          <p>
+            Backtracking is a classic depth-first search (DFS) algorithmic technique for solving constraint satisfaction problems.
+          </p>
+          <div class="mt-2 p-3 bg-surface-950/80 rounded-xl font-mono text-[11px] text-slate-300 border border-slate-800 space-y-1">
+            <p>1. Find next empty cell (row, col).</p>
+            <p>2. Try candidate digit <span class="text-amber-400">d ∈ [1..9]</span>.</p>
+            <p>3. Check 3 constraints: row, column, and 3×3 subgrid.</p>
+            <p>4. If valid, tentatively place <span class="text-emerald-400">d</span> and recurse to next cell.</p>
+            <p>5. If all 1-9 fail, <span class="text-rose-400">BACKTRACK</span>: reset cell to 0 and undo.</p>
+            <p>6. Repeat until board is complete or no solution exists.</p>
+          </div>
+        </div>
+
+        <div>
+          <h4 class="font-semibold text-slate-100 text-sm mb-1 text-brand-300">Visualizer Indicators</h4>
+          <ul class="list-disc list-inside space-y-1 text-slate-400">
+            <li><strong class="text-amber-400">Orange / Amber:</strong> Cell currently being evaluated with a test candidate.</li>
+            <li><strong class="text-emerald-400">Green:</strong> Valid candidate placed tentatively into the state tree.</li>
+            <li><strong class="text-rose-400">Red:</strong> Conflict encountered; algorithm is backtracking and undoing move.</li>
+          </ul>
+        </div>
+
+        <div>
+          <h4 class="font-semibold text-slate-100 text-sm mb-1 text-brand-300">Puzzle Generation & Uniqueness</h4>
+          <p>
+            Puzzles are generated by first creating a fully solved board using randomized backtracking, then strategically digging holes while verifying solution uniqueness.
+          </p>
+        </div>
+
+        <div>
+          <h4 class="font-semibold text-slate-100 text-sm mb-1 text-brand-300">Keyboard Shortcuts</h4>
+          <div class="grid grid-cols-2 gap-2 text-slate-300 font-mono text-[11px] mt-1">
+            <div><span class="text-brand-300 font-bold">Arrow Keys</span>: Navigate</div>
+            <div><span class="text-brand-300 font-bold">1 - 9</span>: Enter digit</div>
+            <div><span class="text-brand-300 font-bold">Backspace/Del</span>: Clear cell</div>
+            <div><span class="text-brand-300 font-bold">N</span>: Toggle Notes mode</div>
+            <div><span class="text-brand-300 font-bold">H</span>: Use hint</div>
+            <div><span class="text-brand-300 font-bold">P / Space</span>: Pause / Resume</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-6 text-center">
+        <button id="btnGotItInfoModal" class="px-5 py-2 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-semibold text-xs transition">
+          Got It
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Audio Synthesizer & Main Script -->
+  <script src="js/sudoku.js"></script>
+</body>
+</html>
